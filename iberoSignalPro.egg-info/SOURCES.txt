@@ -1,0 +1,10 @@
+README.md
+setup.py
+iberoSignalPro/__init__.py
+iberoSignalPro/imagen.py
+iberoSignalPro/preprocesa.py
+iberoSignalPro/vicon.py
+iberoSignalPro.egg-info/PKG-INFO
+iberoSignalPro.egg-info/SOURCES.txt
+iberoSignalPro.egg-info/dependency_links.txt
+iberoSignalPro.egg-info/top_level.txt
