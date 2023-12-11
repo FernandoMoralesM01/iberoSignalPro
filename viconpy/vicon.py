@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 class Vicon:
     
@@ -60,6 +61,12 @@ class Vicon:
         dataframe = dataframe.iloc[:-1, :]
         return dataframe
     
+    def convert_df_to_float32(self, df):
+        if df is not None:
+            df = df.apply(pd.to_numeric, errors='coerce')
+            df = df.astype(np.float32)
+        return df
+    
     def leeViconCSV(self, file_path):
         with open(file_path, 'r', encoding='utf-8-sig') as file:
             lines = file.readlines()
@@ -105,11 +112,11 @@ class Vicon:
                 dataframes[category] = self.procesar_dataframe(dataframes[category])
             else:
                 dataframes[category] = self.procesar_dataframe_devices(dataframes[category])
-
-        self.devices = dataframes['Devices'] if siExisteCategoria[0] else None
-        self.joints = dataframes['Joints'] if siExisteCategoria[1] else None
-        self.segments = dataframes['Segments'] if siExisteCategoria[2] else None
-        self.trajectories = dataframes['Trajectories'] if siExisteCategoria[3] else None
-        self.modelOutputs = dataframes['Model Outputs'] if siExisteCategoria[4] else None
+        
+        self.devices = self.convert_df_to_float32(dataframes['Devices']) if siExisteCategoria[0] else None
+        self.joints = self.convert_df_to_float32(dataframes['Joints']) if siExisteCategoria[1] else None
+        self.segments = self.convert_df_to_float32(dataframes['Segments']) if siExisteCategoria[2] else None
+        self.trajectories = self.convert_df_to_float32(dataframes['Trajectories']) if siExisteCategoria[3] else None
+        self.modelOutputs = self.convert_df_to_float32(dataframes['Model Outputs']) if siExisteCategoria[4] else None
 
         return self.joints, self.devices, self.segments, self.trajectories, self.modelOutputs
