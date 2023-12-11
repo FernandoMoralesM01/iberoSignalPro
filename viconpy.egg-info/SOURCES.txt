@@ -1,0 +1,7 @@
+setup.py
+viconpy/__init__.py
+viconpy/vicon.py
+viconpy.egg-info/PKG-INFO
+viconpy.egg-info/SOURCES.txt
+viconpy.egg-info/dependency_links.txt
+viconpy.egg-info/top_level.txt
