@@ -68,7 +68,7 @@ def im2cvtype(Image):
 
 # FILTROS
 
-def highboost (N = -1, Ftype = 'dir'):
+def highboost (N = 8, Ftype = 'dir'):
   if(Ftype == 'dir'):
     arr = np.array([[-1, -1, -1], [-1, N, -1], [-1, -1, -1]])
   if(Ftype == 'lap'):
@@ -82,7 +82,7 @@ def butter (x,  ws = 2, N = 1, type_b = 'lp'):
     butter_fun = (1 / np.sqrt(1 + (ws / x) ** N ))
   return butter_fun
 
-def imfiltfilt (Image, filt):
+def imfilt (Image, filt):
     
     g = np.fft.fft2(Image)
     g = np.fft.fftshift(g)
