@@ -83,7 +83,6 @@ def butter (x,  ws = 2, N = 1, type_b = 'lp'):
   return butter_fun
 
 def imfilt (Image, filt):
-    
     g = np.fft.fft2(Image)
     g = np.fft.fftshift(g)
     g1 =   (g * filt)
