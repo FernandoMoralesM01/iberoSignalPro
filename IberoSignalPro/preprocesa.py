@@ -1,9 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sbn
 import scipy.signal as sgnl
-
+import wfdb
+import pywt
+from scipy.interpolate import interp1d
+import seaborn as sbn
 ## Funciones
 
 def normaliza(senial, min_val=None, max_val=None, options=None):
@@ -82,26 +84,21 @@ def pwelch_slider(data, ventana = None, encimamiento = 0.5, noverlap =0.7):
     """
     
     if(ventana == None):
-        raise ValueError("ERROR: Indica la ventana guey")
+        raise ValueError("No está el tamaño de la ventna :(")
+        
     
     if not isinstance(data, np.ndarray):
         data = np.array(data)
     
-    try:
-
+    if data.ndim == 1:
+        N = 1
+        M  = data.shape[0]
+        data = np.array([data])
+    if data.ndim == 2:
         N, M = data.shape
         if(N > M):
-            aux = N
-            N = M
-            M = aux
-        else:   
             data = np.transpose(data)
-        
-    except ValueError:
-        M  = data.shape
-        data = np.array([data])
-        data = np.transpose(data)
-        N = 1
+            N, M = data.shape
 
     offset=np.round(ventana * (1-encimamiento))
     
@@ -110,7 +107,8 @@ def pwelch_slider(data, ventana = None, encimamiento = 0.5, noverlap =0.7):
         n_ventanas = fin//offset
         n_ventanas = int(n_ventanas)
     else:
-        raise ValueError(f"Tu ventana {M} es mayor al número de muestras de la señal")
+        print(f"Tu ventana {M} es mayor al número de muestras de la señal")
+        return None
 
     if fin % offset > 0:
         Sxx = np.zeros(((n_ventanas + 1), 1 + (ventana // 2), N))
@@ -125,15 +123,15 @@ def pwelch_slider(data, ventana = None, encimamiento = 0.5, noverlap =0.7):
         a = (count_v) * offset
         b = a + ventana - 1
         for n_sig in range(N):
-            Pxx[count_v, :] = sgnl.welch(data[int(a):int(b) + 1, n_sig], nperseg=ventana, noverlap=noverlap)[1]
-            Sxx[count_v, :, n_sig] = Pxx[count_v, :]
+            Pxx[count_v, :] = sgnl.welch(data[n_sig, int(a):int(b) + 1], nperseg=ventana, noverlap=noverlap)[1]
+            Sxx[count_v, :, n_sig - 1] = Pxx[count_v, :]
         n[count_v] = b
     
-    if fin % offset > 0:
+    if fin % offset < 0:
         count_v += 1
         for n_sig in range(N):
-            Pxx[count_v, :] = sgnl.welch(data[M - ventana:M, n_sig], nperseg=ventana, noverlap=noverlap)
-            Sxx[:,:,n_sig] = Pxx
+            Pxx[count_v, :] = sgnl.welch(data[n_sig, M - ventana:M], nperseg=ventana, noverlap=noverlap)
+            Sxx[:,:,n_sig -1] = Pxx
         n[-1] = M
         
     return (Sxx), n
@@ -196,17 +194,17 @@ def obtenerEnvolvente(senial, options="rms", param=100):
     
     return env
 
-
-
-
 ## Clases
 
 
 class ECG:
-    def __init__(self, fs = None, signalder=None, signals_flt =None):
+    def __init__(self, fs = None, signalder=None, signals_flt =None, HRV = None, ppm = None, nombres = None):
         self.signalder = signalder
         self.signals_flt = signals_flt
         self.fs = fs
+        self.HRV = HRV
+        self.ppm = ppm
+        self.nombres =  nombres
     
     def agregaSeniales(self, seniales=None, nombres=["paco"]):
         """
@@ -232,6 +230,12 @@ class ECG:
                     self.signalder = pd.concat([self.signalder, seniales], axis=1)
             else:
                 seniales = np.array(seniales)
+                if seniales.ndim == 1:
+                    df = pd.DataFrame(data=seniales, columns=nombres)
+                    if self.signalder is None:
+                        self.signalder = df
+                    else:
+                        self.signalder = pd.concat([self.signalder, df], axis=1)
                 if seniales.ndim == 2:
                     N, M = seniales.shape
                     if N < M:
@@ -243,7 +247,7 @@ class ECG:
                         self.signalder = df
                     else:
                         self.signalder = pd.concat([self.signalder, df], axis=1)
-                    
+        self.nombres = nombres          
         return self.signalder
     
     def get_median_filter_width(self, sampling_rate, duration):
@@ -260,7 +264,6 @@ class ECG:
         res = int(sampling_rate * duration)
         res += ((res % 2) - 1)  # Asegura un número impar para el filtro
         return res
-
 
     def baseline_correction(self, senial= any, ms_flt_array=[0.2, 0.6], fs=None, columns = None):
         """
@@ -345,40 +348,165 @@ class ECG:
             raise ValueError("la variable seniales debe de ser un dataframe donde se encuentren las señales")
         
         if seniales is not None:
-            num_cols = seniales.shape[1]
-            num_rows = int(np.ceil(num_cols / 4)) 
-
-            if(options == "cuadrado"):
-                fig, axes = plt.subplots(num_rows, 4, figsize=(num_rows * 8, num_rows * 6))
-
-            elif(options=="horizontal"):
-                fig, axes = plt.subplots(num_cols, 1, figsize=(21, num_cols*3))
-            
-            else:
-                raise ValueError("No existe esa opcion de despliegue, solo: 'cuadrado' y 'horizontal'")
-                
-            axes = axes.flatten()
             if(self.fs != None):
                 t = np.arange(0, len(seniales.iloc[:, 0]), 1)/self.fs
                 xlabel = "Tiempo (s)"
             else:
                 t = np.arange(0, len(seniales.iloc[:, 0]), 1)
                 xlabel = "Muestras"
-            for i in range(num_cols):
-                ax = axes[i]
-                ax.plot(t, seniales.iloc[:, i], color='black', linewidth=0.6)
-                ax.set_title(seniales.columns[i])
-                ax.set_xlabel(xlabel)
-                ax.set_ylabel('Amplitud (mV)')
-                ax.grid(True)
-                ax.set_ylim((-1500,1500))
-                #ax.set_xlim((0,5000))
-                ax.hlines(0,0,len(seniales.iloc[:, 0])/self.fs,color='black',linestyle='dotted')
+            
+            num_cols = seniales.shape[1]
+            if num_cols > 1:
+                num_rows = int(np.ceil(num_cols / 4)) 
+
+                if(options == "cuadrado"):
+                    fig, axes = plt.subplots(num_rows, 4, figsize=(num_rows * 8, num_rows * 6))
+
+                elif(options=="horizontal"):
+                    fig, axes = plt.subplots(num_cols, 1, figsize=(21, num_cols*3))
                 
+                else:
+                    raise ValueError("No existe esa opcion de despliegue, solo: 'cuadrado' y 'horizontal'")
+                    
+                axes = axes.flatten()
+               
+                for i in range(num_cols):
+                    ax = axes[i]
+                    ax.plot(t, seniales.iloc[:, i], color='black', linewidth=0.6)
+                    ax.set_title(seniales.columns[i])
+                    ax.set_xlabel(xlabel)
+                    ax.set_ylabel('Amplitud (mV)')
+                    ax.grid(True)
+                    ax.set_ylim((-1500,1500))
+                    #ax.set_xlim((0,5000))
+                    ax.hlines(0,0,len(seniales.iloc[:, 0])/self.fs,color='black',linestyle='dotted')
+                
+            else:
+                plt.figure(figsize=(21, 5))
+                t = np.arange(0, len(seniales.iloc[:, 0]), 1)/self.fs
+                plt.plot(t, seniales.iloc[:, 0], color='black', linewidth=0.6)
+                plt.hlines(0,0,len(seniales.iloc[:, 0])/self.fs,color='black',linestyle='dotted')
+                plt.grid()
                 
             plt.tight_layout()
             plt.show()
             
         else:
-            raise ValueError("No hay señales que mostrar")               
-    
+            raise ValueError("No hay señales que mostrar")   
+
+    def peakdetect(self, senial, long_ventana = None, distancia = None, thresh = None):
+        """
+        Detecta los picos en una señal.
+
+        Parámetros:
+        senial (array-like): Señal de entrada donde se buscarán los picos.
+        long_ventana (int, opcional): Longitud de la ventana para buscar picos.
+        distancia (int, opcional): Distancia mínima entre picos.
+        thresh (float, opcional): Umbral para considerar un punto como pico.
+
+        Devoluciones:
+        tuple: Una tupla de arrays con los índices y los valores de los picos detectados.
+
+        """
+        senial = np.array(senial)
+        if long_ventana ==  None:
+            long_ventana = self.fs
+        if thresh ==  None:
+            thresh = np.std(senial) * 2
+        if distancia ==  None:
+            distancia = self.fs // (self.fs//2)
+        max_values = []
+        indices_values = []
+
+        for i in range(0, len(senial), long_ventana):
+            ventana = senial[i: i + long_ventana] if (len(senial) >= i + long_ventana) else senial[i:]
+            sort = np.sort(ventana)
+
+            maximos = sort[-distancia:]
+            indices_max = np.array([i + np.where(ventana == m)[0][0] for m in maximos])
+            
+            indices_values.extend(indices_max)
+            max_values.extend(maximos)
+        
+        max_values = np.array(max_values)
+        indices_values = np.array(indices_values)
+        
+        indices_max_ordenados = np.sort(indices_values)
+        indices_aux = np.where(senial[indices_max_ordenados] > thresh)[0]
+        indices_max_ordenados = np.sort(indices_max_ordenados[indices_aux])
+        
+        signal_max_ordenados = senial[indices_max_ordenados]
+
+        indices_max_diff =np.concatenate(([1], np.diff(indices_max_ordenados)))
+        inidicesMayorque = np.where(indices_max_diff >= distancia)[0]
+        inidicesMayorque = np.concatenate(([0], inidicesMayorque))
+
+        indices_picos = []
+        picos = []
+
+        for indices in range (len(inidicesMayorque)):
+            if(indices == len(inidicesMayorque)-1):
+                pico =np.max(signal_max_ordenados[inidicesMayorque[indices]:])
+                indice_pico = np.where(signal_max_ordenados[inidicesMayorque[indices]:] == pico)[0]
+            else:
+                pico =np.max(signal_max_ordenados[inidicesMayorque[indices] : inidicesMayorque[indices+1]])
+                indice_pico = np.where(signal_max_ordenados[inidicesMayorque[indices]: inidicesMayorque[indices+1]] == pico)[0]
+            
+            indice_pico += inidicesMayorque[indices]
+            indices_picos.append(indices_max_ordenados[indice_pico][0])
+            picos.append(pico)
+
+        return np.array(indices_picos), np.array(picos)
+                
+    def getHRV(self, signal, a,  siPlot = False):
+        fs = self.fs
+        auxHrv = np.ones_like(signal)
+        diff = np.diff(a)
+        diff  = np.concatenate(([diff[0]], diff))
+        diff = diff/fs
+        HRV = 60/diff
+
+        ppm = np.mean(HRV)
+        auxHrv = auxHrv * ppm
+        print("ppm = ", ppm)
+
+        t = np.arange(0, len(signal)/fs, 1/(((len(HRV))/len(signal)) * fs))
+        t_2 = np.arange(0, t[-1], 1/fs)
+
+        t_3 = np.arange(0, len(signal)/fs, 1/fs)
+
+        HRV_interpid = interp1d(t, HRV, "quadratic")
+        HRV_interpid = HRV_interpid(t_2)
+        auxHrv[a[0]:a[0]+len(HRV_interpid)] = HRV_interpid
+
+        if(siPlot):
+            fig, ax1 = plt.subplots(figsize=(20, 5))
+
+
+            ax1.plot(t_3, signal, "black", label='ECG', linewidth = 0.5)
+            ax1.set_xlabel('Tiempo (s)')
+            ax1.set_ylabel('Amplitud (mV)', color='black')
+            ax1.tick_params(axis='y', labelcolor='black')
+            ax1.grid()
+
+            ax2 = ax1.twinx()
+            ax2.plot(t_3, auxHrv, "blue", label='HRV (PPM)', alpha = 0.8, linewidth=1.1)
+            ax2.set_ylabel('Amplitud (PPM)', color='blue')
+            ax2.tick_params(axis='y', labelcolor='blue')
+            ax1.plot(a/fs, signal[a], "o", c="r", alpha=0.3, label='picos R')
+
+            ax2_ylim_min = np.min(auxHrv) * 0.6
+            ax2_ylim_max = np.max(auxHrv) * 1.4
+            ax2.set_ylim(ax2_ylim_min, ax2_ylim_max)  
+
+            ax1.legend(loc='upper left')
+            ax2.legend(loc='upper right')
+
+            plt.xlim(a[0]/fs, a[-1]/fs)
+
+            plt.title('ECG / HRV')
+
+            plt.show()
+        self.HRV = auxHrv
+        self.ppm = ppm
+        return auxHrv, ppm
