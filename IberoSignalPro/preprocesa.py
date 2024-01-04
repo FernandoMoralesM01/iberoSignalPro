@@ -6,6 +6,9 @@ import wfdb
 import pywt
 from scipy.interpolate import interp1d
 import seaborn as sbn
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+
 ## Funciones
 
 def normaliza(senial, min_val=None, max_val=None, options=None):
@@ -193,6 +196,162 @@ def obtenerEnvolvente(senial, options="rms", param=100):
         raise ValueError("El arreglo debe ser de 1D o 2D.")
     
     return env
+
+def plotSignalsDF(seniales=None, fs = None, options="cuadrado"):
+        """
+        Grafica las señales de ECG contenidas en un DataFrame de manera interactiva utilizando Plotly.
+
+        Parámetros:
+        seniales (DataFrame): DataFrame que contiene las señales a graficar.
+        options (str, opcional): Opciones de diseño del gráfico. Valores posibles: "cuadrado", "horizontal".
+            Si no se proporciona, su valor por defecto es "cuadrado".
+        fs (int): Frecuencia de muestreo de las señales.
+
+        Lanza:
+        ValueError: Si la variable `seniales` no es un DataFrame que contiene las señales.
+                    Si la opción de despliegue no es válida ("cuadrado" o "horizontal").
+                    Si no hay señales para mostrar.
+        """
+           
+        if not isinstance(seniales, pd.DataFrame):
+            raise ValueError("La variable seniales debe ser un DataFrame que contenga las señales")
+        else:
+            seniales = seniales.copy()
+        
+        if seniales is not None:
+            if fs is not None:
+                t = np.arange(0, len(seniales.iloc[:, 0]), 1) / fs
+                xlabel = "Tiempo (s)"
+            else:
+                t = np.arange(0, len(seniales.iloc[:, 0]), 1)
+                xlabel = "Muestras"
+
+            num_cols = seniales.shape[1]
+            if options == "horizontal":
+                fig = make_subplots(rows=num_cols, cols=1, shared_xaxes=True)
+
+                
+                for i in range(num_cols):
+                    max_val = seniales.iloc[:, i].abs().max()
+                    fig.add_trace(go.Scatter(x=t, y=seniales.iloc[:, i], mode='lines', name=seniales.columns[i], line=dict(color='black', width=0.5)), row=i+1, col=1)
+                    fig.update_yaxes(range=[-max_val, max_val], row=i+1, col=1)  # Set y-axis limits for each subplot
+                
+                    fig.add_hline(y=0, line=dict(color="black", width=0.5, dash="dash"), row=i+1, col=1)  # Add a horizontal line
+                
+                fig.update_layout(
+                    xaxis_title=xlabel,
+                    height=300 * num_cols,
+                    width=1500,
+                    showlegend=False,
+                    plot_bgcolor='white'  # Set background to white
+                )
+
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', ticklen=10)  # Update grid settings
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey')
+
+                fig.show()
+            elif options == "cuadrado":
+                num_rows = int(np.ceil(np.sqrt(num_cols)))
+                num_cols = int(np.ceil(num_cols / num_rows))
+
+                fig = make_subplots(rows=num_rows, cols=num_cols, shared_xaxes=True, subplot_titles=seniales.columns)
+
+                #max_val = seniales.abs().max().max()  # Calculate the maximum absolute value in the DataFrame
+
+                for i in range(num_rows):
+                    for j in range(num_cols):
+                        col_index = i * num_cols + j
+                        max_val = seniales.iloc[:, col_index].abs().max()
+                        
+                        if col_index < len(seniales.columns):
+                            fig.add_trace(go.Scatter(x=t, y=seniales.iloc[:, col_index], mode='lines', name=seniales.columns[col_index], line=dict(color='black', width=0.5)), row=i + 1, col=j + 1)
+                            fig.update_yaxes(range=[-max_val, max_val], row=i + 1, col=j + 1)  # Set y-axis limits for each subplot
+                            fig.add_hline(y=0, line=dict(color="black", width=0.5, dash="dash"), row=i + 1, col=j + 1)  # Add a horizontal line
+                        else:
+                            fig.add_trace(go.Scatter(), row=i + 1, col=j + 1)
+
+                fig.update_layout(
+                    xaxis_title=xlabel,
+                    height=200 * num_rows,
+                    width=400 * num_cols,
+                    showlegend=False,
+                    plot_bgcolor='white'  # Set background to white
+                )
+
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', ticklen=10)  # Update grid settings
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey')
+
+                fig.show()
+            else:
+                raise ValueError("Opción de despliegue no válida")
+
+        else:
+            raise ValueError("No hay señales que mostrar")
+
+def peakdetect(senial, long_ventana = None, distancia = None, thresh = None, fs = None):
+        """
+        Detecta los picos en una señal.
+
+        Parámetros:
+        senial (array-like): Señal de entrada donde se buscarán los picos.
+        long_ventana (int, opcional): Longitud de la ventana para buscar picos.
+        distancia (int, opcional): Distancia mínima entre picos.
+        thresh (float, opcional): Umbral para considerar un punto como pico.
+
+        Devoluciones:
+        tuple: Una tupla de arrays con los índices y los valores de los picos detectados.
+
+        """
+        senial = np.array(senial)
+        if long_ventana ==  None:
+            long_ventana = fs
+        if thresh ==  None:
+            thresh = np.std(senial) * 2
+        if distancia ==  None:
+            distancia = fs // (fs//2)
+        max_values = []
+        indices_values = []
+
+        for i in range(0, len(senial), long_ventana):
+            ventana = senial[i: i + long_ventana] if (len(senial) >= i + long_ventana) else senial[i:]
+            sort = np.sort(ventana)
+
+            maximos = sort[-distancia:]
+            indices_max = np.array([i + np.where(ventana == m)[0][0] for m in maximos])
+            
+            indices_values.extend(indices_max)
+            max_values.extend(maximos)
+        
+        max_values = np.array(max_values)
+        indices_values = np.array(indices_values)
+        
+        indices_max_ordenados = np.sort(indices_values)
+        indices_aux = np.where(senial[indices_max_ordenados] > thresh)[0]
+        indices_max_ordenados = np.sort(indices_max_ordenados[indices_aux])
+        
+        signal_max_ordenados = senial[indices_max_ordenados]
+
+        indices_max_diff =np.concatenate(([1], np.diff(indices_max_ordenados)))
+        inidicesMayorque = np.where(indices_max_diff >= distancia)[0]
+        inidicesMayorque = np.concatenate(([0], inidicesMayorque))
+
+        indices_picos = []
+        picos = []
+
+        for indices in range (len(inidicesMayorque)):
+            if(indices == len(inidicesMayorque)-1):
+                pico =np.max(signal_max_ordenados[inidicesMayorque[indices]:])
+                indice_pico = np.where(signal_max_ordenados[inidicesMayorque[indices]:] == pico)[0]
+            else:
+                pico =np.max(signal_max_ordenados[inidicesMayorque[indices] : inidicesMayorque[indices+1]])
+                indice_pico = np.where(signal_max_ordenados[inidicesMayorque[indices]: inidicesMayorque[indices+1]] == pico)[0]
+            
+            indice_pico += inidicesMayorque[indices]
+            indices_picos.append(indices_max_ordenados[indice_pico][0])
+            picos.append(pico)
+
+        return np.array(indices_picos), np.array(picos)
+    
 
 ## Clases
 
@@ -459,6 +618,18 @@ class ECG:
         return np.array(indices_picos), np.array(picos)
                 
     def getHRV(self, signal, a,  siPlot = False):
+        """
+        Calcula la variabilidad de la frecuencia cardíaca (HRV) a partir de una señal ECG.
+
+        Parámetros:
+        signal (array-like): Señal de electrocardiograma (ECG).
+        a (array-like): Índices de los picos R en la señal ECG.
+        siPlot (bool, opcional): Indica si se debe mostrar un gráfico del ECG y la HRV.
+
+        Devoluciones:
+        tuple: Una tupla con la señal HRV y el promedio de latidos por minuto (PPM).
+
+        """
         fs = self.fs
         auxHrv = np.ones_like(signal)
         diff = np.diff(a)
@@ -510,3 +681,102 @@ class ECG:
         self.HRV = auxHrv
         self.ppm = ppm
         return auxHrv, ppm
+    
+    def plotSignals_2(self, seniales=None, options="cuadrado"):
+        """
+        Grafica las señales de ECG contenidas en un DataFrame de manera interactiva utilizando Plotly.
+
+        Parámetros:
+        seniales (DataFrame): DataFrame que contiene las señales a graficar.
+        options (str, opcional): Opciones de diseño del gráfico. Valores posibles: "cuadrado", "horizontal".
+            Si no se proporciona, su valor por defecto es "cuadrado".
+        fs (int): Frecuencia de muestreo de las señales.
+
+        Lanza:
+        ValueError: Si la variable `seniales` no es un DataFrame que contiene las señales.
+                    Si la opción de despliegue no es válida ("cuadrado" o "horizontal").
+                    Si no hay señales para mostrar.
+        """
+        if(seniales is None):
+            seniales = self.signalder.copy()
+        if not isinstance(seniales, pd.DataFrame):
+            raise ValueError("La variable seniales debe ser un DataFrame que contenga las señales")
+        else:
+            seniales = seniales.copy()
+        
+        fs = self.fs
+        if seniales is not None:
+            if fs is not None:
+                t = np.arange(0, len(seniales.iloc[:, 0]), 1) / fs
+                xlabel = "Tiempo (s)"
+            else:
+                t = np.arange(0, len(seniales.iloc[:, 0]), 1)
+                xlabel = "Muestras"
+
+            num_cols = seniales.shape[1]
+            if options == "horizontal":
+                fig = make_subplots(rows=num_cols, cols=1, shared_xaxes=True)
+
+                
+                for i in range(num_cols):
+                    max_val = seniales.iloc[:, i].abs().max()
+                    fig.add_trace(go.Scatter(x=t, y=seniales.iloc[:, i], mode='lines', name=seniales.columns[i], line=dict(color='black', width=0.5)), row=i+1, col=1)
+                    fig.update_yaxes(range=[-max_val, max_val], row=i+1, col=1)  # Set y-axis limits for each subplot
+                
+                    fig.add_hline(y=0, line=dict(color="black", width=0.5, dash="dash"), row=i+1, col=1)  # Add a horizontal line
+                
+                fig.update_layout(
+                    xaxis_title=xlabel,
+                    height=300 * num_cols,
+                    width=1500,
+                    showlegend=False,
+                    plot_bgcolor='white'  # Set background to white
+                )
+
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', ticklen=10)  # Update grid settings
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey')
+
+                fig.show()
+            elif options == "cuadrado":
+                num_rows = int(np.ceil(np.sqrt(num_cols)))
+                num_cols = int(np.ceil(num_cols / num_rows))
+
+                fig = make_subplots(rows=num_rows, cols=num_cols, shared_xaxes=True, subplot_titles=seniales.columns)
+
+                #max_val = seniales.abs().max().max()  # Calculate the maximum absolute value in the DataFrame
+
+                for i in range(num_rows):
+                    for j in range(num_cols):
+                        col_index = i * num_cols + j
+                        max_val = seniales.iloc[:, col_index].abs().max()
+                        
+                        if col_index < len(seniales.columns):
+                            fig.add_trace(go.Scatter(x=t, y=seniales.iloc[:, col_index], mode='lines', name=seniales.columns[col_index], line=dict(color='black', width=0.5)), row=i + 1, col=j + 1)
+                            fig.update_yaxes(range=[-max_val, max_val], row=i + 1, col=j + 1)  # Set y-axis limits for each subplot
+                            fig.add_hline(y=0, line=dict(color="black", width=0.5, dash="dash"), row=i + 1, col=j + 1)  # Add a horizontal line
+                        else:
+                            fig.add_trace(go.Scatter(), row=i + 1, col=j + 1)
+
+                fig.update_layout(
+                    xaxis_title=xlabel,
+                    height=200 * num_rows,
+                    width=400 * num_cols,
+                    showlegend=False,
+                    plot_bgcolor='white'  # Set background to white
+                )
+
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', ticklen=10)  # Update grid settings
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey')
+
+                fig.show()
+            else:
+                raise ValueError("Opción de despliegue no válida")
+
+        else:
+            raise ValueError("No hay señales que mostrar")
+
+    # Signal Filtering
+    # R - peak detection
+    # segmentar ECG
+    # Machine learning
+    
