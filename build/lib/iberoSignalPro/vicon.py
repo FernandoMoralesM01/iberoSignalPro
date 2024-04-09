@@ -6,7 +6,7 @@ class Vicon:
     def __init__(self, joints = None, segments = None, trajectories = None, devices = None, modelOutputs = None):
         self.joints = joints
         self.segments = segments
-        self.trayectories = trajectories
+        self.trajectories = trajectories
         self.devices = devices
         self.modelOutputs = modelOutputs
         
