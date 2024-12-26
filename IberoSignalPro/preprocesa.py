@@ -180,7 +180,7 @@ def band_definition(x):
         'gamma': [30,100],
         'delta': [0.1,4],
         'theta': [4,8],
-        'mu'   : [8,15]
+        'mu'   : [12,15]
     }.get(x, [8,12])
 
 
@@ -378,33 +378,25 @@ def plotSignalsDF(seniales=None, fs = None, options="cuadrado"):
         else:
             raise ValueError("No hay señales que mostrar")
 
-def peakdetect(senial, fs, long_ventana = None, distancia = None, thresh = [0, 0]):
+def peakdetect(senial, long_ventana = None, distancia = None, thresh = None, fs = None):
         """
         Detecta los picos en una señal.
 
         Parámetros:
         senial (array-like): Señal de entrada donde se buscarán los picos.
-        fs: Frecuencia de muestreo de la señal
         long_ventana (int, opcional): Longitud de la ventana para buscar picos.
         distancia (int, opcional): Distancia mínima entre picos.
-        thresh (tupple, opcional): [Umbral Minimo, Umbral Máximo].
+        thresh (float, opcional): Umbral para considerar un punto como pico.
 
         Devoluciones:
         tuple: Una tupla de arrays con los índices y los valores de los picos detectados.
 
         """
         senial = np.array(senial)
-        if fs is None:
-            print("Ingresa la frecuencia de muestreo...")
-
-            return 0, 0
-        
         if long_ventana ==  None:
             long_ventana = fs
-        if thresh ==  [0, 0]:
-            thresh[0] = np.std(senial)
-            thresh[1] = np.std(senial) * 3
-
+        if thresh ==  None:
+            thresh = np.std(senial) * 2
         if distancia ==  None:
             distancia = fs // (fs//2)
         max_values = []
@@ -424,8 +416,7 @@ def peakdetect(senial, fs, long_ventana = None, distancia = None, thresh = [0, 0
         indices_values = np.array(indices_values)
         
         indices_max_ordenados = np.sort(indices_values)
-        indices_aux = np.where((senial[indices_max_ordenados] > thresh[0]) & (senial[indices_max_ordenados] < thresh[1]))[0]
-
+        indices_aux = np.where(senial[indices_max_ordenados] > thresh)[0]
         indices_max_ordenados = np.sort(indices_max_ordenados[indices_aux])
         
         signal_max_ordenados = senial[indices_max_ordenados]
@@ -483,74 +474,6 @@ def baseline_correction_2(senial, ms_flt_array=[0.2, 0.6], fs=None, columns=None
         senial.iloc[:, j] -= X0  # Corrección de línea base
         
     return senial
-
-def getHRV(signal, fs, idx, interp = "cubic",  siPlot = False):
-        """
-        Calcula la variabilidad de la frecuencia cardíaca (HRV) a partir de una señal ECG.
-
-        Parámetros:
-        signal (array-like): Señal de electrocardiograma (ECG).
-        a (array-like): Índices de los picos R en la señal ECG.
-        siPlot (bool, opcional): Indica si se debe mostrar un gráfico del ECG y la HRV.
-
-        Devoluciones:
-        tuple: Una tupla con la señal HRV y el promedio de latidos por minuto (PPM).
-
-        """
-        if fs is None:
-            print("Falto la frecuencia de muestreo...")
-            return 0, 0
-        auxHrv = np.ones_like(signal)
-        diff = np.diff(idx)
-        diff  = np.concatenate(([diff[0]], diff))
-        diff = diff/fs
-        HRV = 60/diff
-        
-        ppm = np.mean(HRV)
-        auxHrv = auxHrv * ppm
-        print("ppm = ", ppm)
-        
-        print(HRV.shape, signal.shape)
-        HRV =  np.concatenate(([ppm], HRV, [ppm]))
-        t_aux = np.arange(0, len(signal)/fs, 1/fs)
-        HRV_fs = (len(HRV)/t_aux[-1])
-        t = np.arange(0, t_aux[-1], 1/ HRV_fs)
-        
-        
-        print(t.shape, HRV.shape)
-        HRV_interpid = interp1d(t, HRV, interp)
-        t_aux = np.clip(t_aux, t.min(), t.max())
-
-        HRV_interpid = HRV_interpid(t_aux)
-
-        #HRV_interpid_resized = np.resize(HRV_interpid, idx[-1] - idx[0])
-
-        auxHrv = HRV_interpid
-
-        if(siPlot):
-            fig, ax1 = plt.subplots(figsize=(20, 5))
-            ax1.plot(t_aux, signal, "black", label='ECG', linewidth = 0.5)
-            ax1.set_xlabel('Tiempo (s)')
-            ax1.set_ylabel('Amplitud (mV)', color='black')
-            ax1.tick_params(axis='y', labelcolor='black')
-            ax1.grid()
-
-            ax2 = ax1.twinx()
-            ax2.plot(t_aux, auxHrv, "blue", label='HRV (PPM)', alpha = 0.7, linewidth=2)
-            ax2.set_ylabel('Amplitud (PPM)', color='blue')
-            ax2.tick_params(axis='y', labelcolor='blue')
-            ax1.plot(idx/fs, signal[idx], "o", c="r", alpha=0.3, label='picos R')
-
-            ax2_ylim_min = np.min(auxHrv) * 0.6
-            ax2_ylim_max = np.max(auxHrv) * 1.4
-            ax2.set_ylim(ax2_ylim_min, ax2_ylim_max)  
-
-            ax1.legend(loc='upper left')
-            ax2.legend(loc='upper right')
-            plt.xlim(idx[0]/fs, idx[-1]/fs)
-            plt.title('ECG / HRV')
-            plt.show()
-        return auxHrv, ppm
 
 
 ########## Clases
@@ -943,7 +866,7 @@ class ECG:
 
         return np.array(indices_picos), np.array(picos)
                 
-    def getHRV(self, signal, a, siPlot = False):
+    def getHRV(self, signal, a,  siPlot = False):
         """
         Calcula la variabilidad de la frecuencia cardíaca (HRV) a partir de una señal ECG.
 
@@ -956,6 +879,7 @@ class ECG:
         tuple: Una tupla con la señal HRV y el promedio de latidos por minuto (PPM).
 
         """
+        
         fs = self.fs
         auxHrv = np.ones_like(signal)
         diff = np.diff(a)
@@ -968,19 +892,14 @@ class ECG:
         print("ppm = ", ppm)
 
         t = np.arange(0, len(signal)/fs, 1/(((len(HRV))/len(signal)) * fs))
-
         t_2 = np.arange(0, t[-1], 1/fs)
-        
+
         t_3 = np.arange(0, len(signal)/fs, 1/fs)
 
         HRV_interpid = interp1d(t, HRV, "quadratic")
         HRV_interpid = HRV_interpid(t_2)
-        
-        auxHrv[a[0]:a[-1]] = HRV_interpid[:a[-1] - a[0]]
-        #auxHrv[a[0]:a[0]+len(HRV_interpid)] = HRV_interpid
-        
+        auxHrv[a[0]:a[0]+len(HRV_interpid)] = HRV_interpid
 
-        
         if(siPlot):
             fig, ax1 = plt.subplots(figsize=(20, 5))
 
@@ -1003,10 +922,12 @@ class ECG:
 
             ax1.legend(loc='upper left')
             ax2.legend(loc='upper right')
+
             plt.xlim(a[0]/fs, a[-1]/fs)
+
             plt.title('ECG / HRV')
+
             plt.show()
-            
         self.HRV = auxHrv
         self.ppm = ppm
         return auxHrv, ppm
