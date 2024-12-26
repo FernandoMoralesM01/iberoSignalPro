@@ -12,4 +12,4 @@ The library includes modules for:
 To install the library directly from GitHub, use the following command:
 
 ```bash
-pip install git+https://github.com/yourusername/your-repo.git
+pip install git+https://github.com/FernandoMoralesM01/iberoSignalPro
