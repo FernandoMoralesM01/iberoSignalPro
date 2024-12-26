@@ -118,7 +118,6 @@ pytz==2024.1
 pyunicorn==0.8.0
 pyviz_comms==3.0.3
 PyWavelets==1.6.0
-pywin32==306
 PyYAML==6.0.2
 pyzmq==25.0.2
 referencing==0.35.1
@@ -159,7 +158,6 @@ websocket-client==1.8.0
 Werkzeug==3.0.3
 wfdb==4.1.2
 widgetsnbextension==4.0.10
-win10toast==0.9
 wrapt==1.16.0
 xyzservices==2024.9.0
 yfinance==0.2.41
